@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+work/
+node_modules/
+graphify-out/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.log
+test_sf.wav

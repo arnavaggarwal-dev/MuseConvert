@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aegis Score Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/app.css" />
+<style>
+  .smufl{ font-family:"Bravura", serif; }
+  /* ruler ticks */
+  .rk{ position:absolute; top:0; bottom:0; }
+  .rk.bar{ width:1px; background:var(--line); }
+  .rk.bar.major{ background:var(--line-strong); }
+  .rk.beat{ width:1px; height:6px; top:auto; bottom:0; background:var(--line-soft); }
+  .rk-lab{ position:absolute; top:5px; left:4px; font-family:var(--mono); font-size:9.5px; color:var(--t-2); }
+  #grid-canvas{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+  .lanes-inner{ position:relative; z-index:1; }
+</style>
+</head>
+<body data-scene="success" data-project="band">
+
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="top">
+    <div class="brand">
+      <div class="glyph"></div>
+      <div class="name">AEGIS<b>SCORE</b></div>
+    </div>
+    <nav class="menubar">
+      <button>File</button><button>Edit</button><button>Analyze</button><button>Score</button><button>View</button>
+    </nav>
+    <div class="omnibox" id="omnibox">
+      <svg class="yt" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23 12s0-3.4-.4-5a2.8 2.8 0 0 0-2-2C18.9 4.5 12 4.5 12 4.5s-6.9 0-8.6.5a2.8 2.8 0 0 0-2 2C1 8.6 1 12 1 12s0 3.4.4 5a2.8 2.8 0 0 0 2 2c1.7.5 8.6.5 8.6.5s6.9 0 8.6-.5a2.8 2.8 0 0 0 2-2c.4-1.6.4-5 .4-5Z"/><path d="M9.8 15.5V8.5L15.5 12l-5.7 3.5Z" fill="#0d0d10"/></svg>
+      <input id="omni-input" value="https://youtube.com/watch?v=k7Qm2x9LpZ4" spellcheck="false" />
+      <span class="kbd">⌘L</span>
+    </div>
+    <div class="top-right">
+      <div class="meter gpu" title="GPU utilization"><span class="lbl">GPU</span><span class="bar"><i id="gpu-bar" style="width:14%"></i></span><span class="val" id="gpu-val">14%</span></div>
+      <div class="meter vram" title="VRAM"><span class="lbl">VRAM</span><span class="bar"><i id="vram-bar" style="width:26%"></i></span><span class="val" id="vram-val">6.2G</span></div>
+      <button class="iconbtn" id="btn-cmdk" title="Command palette ⌘K"><svg viewBox="0 0 24 24" class="ico-stroke"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+      <button class="iconbtn" title="Notifications"><svg viewBox="0 0 24 24" class="ico-stroke"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+      <div class="avatar">JD</div>
+    </div>
+  </header>
+
+  <!-- ============ SUB STRIP ============ -->
+  <div class="sub">
+    <div class="crumbs">
+      <span class="dot" id="crumb-dot"></span>
+      <span>Workspace</span><span class="sep">/</span>
+      <span>Atlas of Sleep</span><span class="sep">/</span>
+      <b id="crumb-title">Midnight Cartography</b>
+    </div>
+    <span class="pill ok" id="scene-pill"><span class="pdot"></span><span id="scene-pill-t">Analysis complete</span></span>
+    <div class="sub-meta" id="sub-meta"></div>
+  </div>
+
+  <!-- ============ LEFT ============ -->
+  <aside class="left">
+    <div class="left-scroll">
+      <div class="section">
+        <div class="panel-head">Project Navigator <span class="count" id="nav-count"></span></div>
+        <div class="tree" id="nav-tree"></div>
+      </div>
+      <div class="section">
+        <div class="panel-head">Files
+          <span class="hbtn" title="New folder"><svg width="13" height="13" viewBox="0 0 24 24" class="ico-stroke"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span>
+        </div>
+        <div class="tree" id="file-tree"></div>
+      </div>
+      <div class="section flexgrow">
+        <div class="panel-head">Analysis History <span class="count" id="hist-count"></span></div>
+        <div class="tree" id="hist-list" style="padding:0"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ CENTER (score) ============ -->
+  <main class="center">
+    <div class="center-head">
+      <div class="tabs">
+        <div class="tab active" data-tab="score"><svg class="ti ico-stroke" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Score</div>
+        <div class="tab" data-tab="midi"><svg class="ti ico-stroke" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M11 4v16M15 4v16"/></svg>Piano Roll</div>
+        <div class="tab" data-tab="tab"><svg class="ti ico-stroke" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>Tablature</div>
+      </div>
+      <div class="score-tools">
+        <button class="stool active" data-tool="select" title="Select (V)"><svg viewBox="0 0 24 24" class="ico-stroke"><path d="M5 3l15 8-7 2-3 7Z"/></svg></button>
+        <button class="stool" data-tool="note" title="Note input (N)"><svg viewBox="0 0 24 24" class="ico-stroke"><circle cx="7" cy="18" r="3"/><path d="M10 18V4l9-2"/></svg></button>
+        <button class="stool" data-tool="erase" title="Erase (E)"><svg viewBox="0 0 24 24" class="ico-stroke"><path d="M4 14l6 6h8M16 6l4 4-9 9-5-5Z"/></svg></button>
+        <div class="divider-v"></div>
+        <button class="stool" data-tool="concert" title="Concert pitch">Concert</button>
+        <div class="zoomctl">
+          <button id="zoom-out">−</button><div class="zval" id="zoom-val">100%</div><button id="zoom-in">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="score-canvas" id="score-canvas">
+      <div class="score-paper" id="score-paper">
+        <div class="score-titleblock" id="score-title"></div>
+        <div class="systems" id="score-systems"></div>
+      </div>
+    </div>
+
+    <!-- ===== STATE OVERLAYS ===== -->
+    <div class="overlay" id="ov-empty">
+      <div class="empty-state">
+        <div class="es-mark"><svg width="30" height="30" viewBox="0 0 24 24" class="ico-stroke"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h2>Deconstruct any track</h2>
+        <p>Paste a YouTube URL to separate stems, identify instruments, and transcribe<br/>each part into MIDI and notation. Audio never leaves your machine.</p>
+        <div class="empty-drop">
+          <div class="big-omni">
+            <svg class="yt" width="18" height="18" viewBox="0 0 24 24" fill="var(--bad)"><path d="M23 12s0-3.4-.4-5a2.8 2.8 0 0 0-2-2C18.9 4.5 12 4.5 12 4.5s-6.9 0-8.6.5a2.8 2.8 0 0 0-2 2C1 8.6 1 12 1 12s0 3.4.4 5a2.8 2.8 0 0 0 2 2c1.7.5 8.6.5 8.6.5s6.9 0 8.6-.5a2.8 2.8 0 0 0 2-2c.4-1.6.4-5 .4-5Z"/></svg>
+            <input placeholder="Paste a YouTube link, or drop an audio file…" spellcheck="false" id="empty-input" />
+            <button class="go" id="empty-go">Analyze</button>
+          </div>
+          <div class="empty-recents">
+            <span class="er" data-load="band"><span class="erc" style="background:var(--s-synth)"></span>Midnight Cartography</span>
+            <span class="er" data-load="orchestra"><span class="erc" style="background:var(--s-strings)"></span>Aurora Borealis Suite</span>
+            <span class="er" data-load="piano"><span class="erc" style="background:var(--s-keys)"></span>Gymnopédie No. 1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="ov-proc">
+      <div class="proc">
+        <div class="proc-head">
+          <div class="proc-thumb" id="proc-thumb"></div>
+          <div><div class="proc-tt" id="proc-tt">Midnight Cartography</div><div class="proc-ts" id="proc-ts">Neon Tide · 3:38 · 48 kHz/24-bit</div></div>
+          <div class="proc-pct" id="proc-pct">0%</div>
+        </div>
+        <div class="proc-stages" id="proc-stages"></div>
+        <div class="proc-bar"><i id="proc-bar-i" style="width:0%"></i></div>
+        <div class="proc-foot"><span id="proc-eta">Estimating…</span><span id="proc-gpu">GPU · RTX 4090</span></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="ov-error">
+      <div class="err-state">
+        <div class="err-card">
+          <div class="err-top">
+            <div class="err-ic"><svg width="20" height="20" viewBox="0 0 24 24" class="ico-stroke"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+            <div>
+              <div class="err-h">Separation failed — source unavailable</div>
+              <div class="err-sub">The audio stream could not be retrieved. The video may be age-restricted, region-locked, or removed. Local files are unaffected.</div>
+              <div class="err-code mono">ERR_STREAM_403 · yt-extract · stage 1/5</div>
+            </div>
+          </div>
+          <div class="err-log mono" id="err-log"></div>
+          <div class="err-actions">
+            <button class="btn primary" id="err-retry"><svg width="14" height="14" viewBox="0 0 24 24" class="ico-stroke"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Retry</button>
+            <button class="btn" id="err-file">Upload file instead</button>
+            <button class="btn" id="err-dismiss">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="ov-load">
+      <div class="proc" style="text-align:center">
+        <div class="spinner" style="width:28px;height:28px;margin:0 auto 16px;border-width:3px"></div>
+        <div class="proc-tt">Opening project…</div>
+        <div class="proc-ts" id="load-sub">Loading stems &amp; notation cache</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ BOTTOM (timeline) ============ -->
+  <section class="bottom">
+    <div class="timeline-head">
+      <div class="transport">
+        <button class="tbtn" id="tp-start" title="To start"><svg viewBox="0 0 24 24" class="ico-stroke"><path d="M19 5v14L8 12zM5 5v14" /></svg></button>
+        <button class="tbtn play" id="tp-play" title="Play/Pause (Space)"><svg id="play-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></button>
+        <button class="tbtn" id="tp-stop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+        <button class="tbtn" id="tp-loop" title="Loop"><svg viewBox="0 0 24 24" class="ico-stroke"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+      </div>
+      <div class="timecode"><span id="tc-bars">009</span><span class="sep2">:</span><span id="tc-beat">1</span><span class="sep2">:</span><span id="tc-tick">00</span><span class="ms" id="tc-time">0:16.2</span></div>
+      <div class="tl-stats">
+        <div class="tl-stat"><span class="k">Tempo</span><span class="v" id="st-tempo">122 <small>BPM</small></span></div>
+        <div class="tl-stat"><span class="k">Sig</span><span class="v" id="st-sig">4/4</span></div>
+        <div class="tl-stat"><span class="k">Key</span><span class="v" id="st-key">F# min</span></div>
+      </div>
+      <div class="tl-right">
+        <button class="tl-toggle on" id="tg-wave"><svg width="13" height="13" viewBox="0 0 24 24" class="ico-stroke"><path d="M2 12h2l3-8 4 16 3-12 2 6h6"/></svg>Waveform</button>
+        <button class="tl-toggle on" id="tg-beat"><svg width="13" height="13" viewBox="0 0 24 24" class="ico-stroke"><path d="M4 4v16M9 7v10M14 5v14M19 9v6"/></svg>Beat grid</button>
+        <button class="tl-toggle" id="tg-tempo"><svg width="13" height="13" viewBox="0 0 24 24" class="ico-stroke"><path d="M3 17l6-6 4 4 8-8"/></svg>Tempo map</button>
+      </div>
+    </div>
+    <div class="timeline-body">
+      <div class="track-gutter">
+        <div class="tl-ruler-spacer">Stems</div>
+        <div class="gutter-scroll" id="gutter-scroll"><div id="gutter"></div></div>
+        <div class="gutter-foot" id="gutter-foot"></div>
+      </div>
+      <div class="lane-scroll" id="lane-scroll">
+        <div class="lane-col" id="lane-col">
+          <div class="tl-ruler" id="ruler"></div>
+          <div class="lanes-vscroll" id="lanes-vscroll">
+            <div class="lanes" id="lanes-wrap" style="position:relative">
+              <canvas id="grid-canvas"></canvas>
+              <div class="lanes-inner" id="lanes"></div>
+              <div class="playhead" id="playhead" style="left:0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RIGHT (inspector) ============ -->
+  <aside class="right">
+    <div class="insp-tabs">
+      <div class="insp-tab active" data-itab="instrument">Instrument</div>
+      <div class="insp-tab" data-itab="quality">Quality</div>
+      <div class="insp-tab" data-itab="export">Export</div>
+    </div>
+    <div class="right-scroll" id="insp-body"></div>
+  </aside>
+
+  <!-- ============ STATUS BAR ============ -->
+  <footer class="status">
+    <div class="sb"><span class="sdot" style="background:var(--good)"></span><b id="sbar-model">HT-Demucs v4</b></div>
+    <div class="sb"><span id="sbar-stems">6 stems</span> · <span id="sbar-midi">912 MIDI events</span></div>
+    <div class="sb acc" id="sbar-sel">Lead Synth selected</div>
+    <div class="sb right">48 kHz · 24-bit</div>
+    <div class="sb"><span class="mono" id="sbar-zoom">100%</span></div>
+    <div class="sb"><span id="sbar-scene">Ready</span></div>
+  </footer>
+
+</div>
+
+<!-- context menu / hint / palette / flash -->
+<div class="ctx" id="ctx"></div>
+<div class="hint" id="hint"></div>
+<div class="cmdk-scrim" id="cmdk"><div class="cmdk"><div class="cmdk-input"><svg viewBox="0 0 24 24" class="ico-stroke"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="cmdk-input" placeholder="Search actions, stems, projects…" /></div><div class="cmdk-list" id="cmdk-list"></div></div></div>
+<div class="flash" id="flash"><span class="fdot"></span><span id="flash-t"></span></div>
+
+<input type="file" id="file-picker" accept="audio/*,video/*,.mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.webm" style="display:none" />
+<script src="js/data.js"></script>
+<script src="js/notation.js"></script>
+<script src="js/waveform.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/controller.js"></script>
+</body>
+</html>
