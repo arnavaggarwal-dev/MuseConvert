@@ -12,3 +12,4 @@ build/
 venv/
 *.log
 test_sf.wav
+aegis.db

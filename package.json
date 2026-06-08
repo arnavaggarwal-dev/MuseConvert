@@ -1,0 +1,38 @@
+{
+  "name": "aegis-score-studio",
+  "version": "1.0.0",
+  "description": "AI music deconstruction workstation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.aegis.score-studio",
+    "productName": "Aegis Score Studio",
+    "directories": { "output": "dist" },
+    "files": [
+      "main.js",
+      "index.html",
+      "css/**",
+      "js/**",
+      "server.py",
+      "requirements.txt"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "css/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "css/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

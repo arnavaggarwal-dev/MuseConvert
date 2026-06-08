@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from backend.api.routers import analyze, upload, status, midi_notes
+from backend.api.routers import analyze, upload, status, midi_notes, history
+from backend.db.database import init_db
 
 
 def create_app() -> FastAPI:
@@ -19,10 +20,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(analyze.router, prefix="/api")
-    app.include_router(upload.router,  prefix="/api")
-    app.include_router(status.router,  prefix="/api")
+    init_db()
+
+    app.include_router(analyze.router,    prefix="/api")
+    app.include_router(upload.router,     prefix="/api")
+    app.include_router(status.router,     prefix="/api")
     app.include_router(midi_notes.router, prefix="/api")
+    app.include_router(history.router,    prefix="/api")
 
     work_dir = Path("work")
     work_dir.mkdir(exist_ok=True)

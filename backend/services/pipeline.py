@@ -162,6 +162,8 @@ async def pipeline_url(sid: str, url: str) -> None:
         _set(sid, meta=meta, progress=0.18)
         await _separate_and_transcribe(sid, audio_path, meta)
         URL_CACHE[url] = sid
+        from backend.services.session_store import save_session
+        save_session(sid, JOBS[sid])
     except Exception as exc:
         _set(sid, status="error", error=str(exc), progress=1.0)
 
@@ -179,5 +181,7 @@ async def pipeline_file(sid: str, audio_path: Path, filename: str) -> None:
         meta = {"title": Path(filename).stem, "artist": "Local file", "duration": int(info.duration), "thumb": "", "source": filename}
         _set(sid, meta=meta, progress=0.18)
         await _separate_and_transcribe(sid, audio_path, meta)
+        from backend.services.session_store import save_session
+        save_session(sid, JOBS[sid])
     except Exception as exc:
         _set(sid, status="error", error=str(exc), progress=1.0)
