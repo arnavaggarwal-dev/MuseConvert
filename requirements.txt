@@ -8,3 +8,4 @@ librosa>=0.10.0
 pretty-midi>=0.2.10
 soundfile>=0.12.1
 python-multipart
+omnizart

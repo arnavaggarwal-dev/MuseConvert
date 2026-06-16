@@ -13,3 +13,7 @@ venv/
 *.log
 test_sf.wav
 aegis.db
+
+.env.local
+.setup_complete
+models/

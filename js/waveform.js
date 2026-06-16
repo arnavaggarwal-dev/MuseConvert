@@ -50,12 +50,22 @@ function drawWaveform(canvas, stem, opts){
     }
     samples[i] = Math.max(0.02, Math.min(1, v));
   }
-  // fill waveform
-  ctx.globalAlpha = stem.muted ? 0.28 : 1;
+  // fill waveform — real peaks take priority over procedural
   ctx.fillStyle = col;
   ctx.beginPath();
-  for (let i=0;i<n;i++){ const x=i*pxStep, a=samples[i]*maxA; ctx.rect(x, mid-a, pxStep-0.6, a*2); }
-  ctx.globalAlpha = stem.muted ? 0.16 : 0.92;
+  if (opts.peaks && opts.peaks.length > 0) {
+    const P = opts.peaks, Pn = P.length;
+    ctx.globalAlpha = stem.muted ? 0.28 : 0.92;
+    for (let i = 0; i < W; i++) {
+      const pi = Math.min(Pn - 1, Math.floor(i / W * Pn));
+      const a = P[pi] * maxA;
+      ctx.rect(i, mid - a, 1.4, a * 2);
+    }
+  } else {
+    ctx.globalAlpha = stem.muted ? 0.28 : 1;
+    for (let i=0;i<n;i++){ const x=i*pxStep, a=samples[i]*maxA; ctx.rect(x, mid-a, pxStep-0.6, a*2); }
+    ctx.globalAlpha = stem.muted ? 0.16 : 0.92;
+  }
   ctx.fill();
   // center line
   ctx.globalAlpha = 0.5; ctx.strokeStyle = col; ctx.lineWidth=0.6;

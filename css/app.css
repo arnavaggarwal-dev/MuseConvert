@@ -284,6 +284,8 @@ html, body {
 .crumbs { display: flex; align-items: center; gap: 7px; color: var(--t-2); }
 .crumbs b { color: var(--t-0); font-weight: 600; }
 .crumbs .sep { color: var(--t-3); }
+#crumb-title:not(:empty) { cursor: pointer; border-radius: 4px; padding: 1px 4px; transition: background var(--t-micro); }
+#crumb-title:not(:empty):hover { background: var(--bg-3); }
 .crumbs .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px var(--good); }
 
 .pill {
@@ -473,6 +475,8 @@ html, body {
 }
 .tbtn svg { width: 14px; height: 14px; }
 .tbtn.play svg { width: 13px; height: 13px; }
+.tp-mode-btn { width: auto; padding: 0 8px; font-size: 10px; font-weight: 700; font-family: var(--mono); letter-spacing: .04em; }
+.tp-mode-btn.on { background: var(--acc); border-color: var(--acc-bright); color: var(--bg-0); }
 
 .timecode {
   display: flex; align-items: baseline; gap: 2px;
@@ -775,7 +779,7 @@ html, body {
    CONTEXT MENU
    ============================================================ */
 .ctx {
-  position: fixed; z-index: 200; min-width: 210px;
+  position: fixed; z-index: 700; min-width: 210px;
   background: oklch(0.20 0.008 258 / 0.92);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);

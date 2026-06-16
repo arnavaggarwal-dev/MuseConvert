@@ -14,7 +14,9 @@
   "build": {
     "appId": "com.aegis.score-studio",
     "productName": "Aegis Score Studio",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "main.js",
       "index.html",
@@ -24,8 +26,7 @@
       "requirements.txt"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "css/icon.ico"
+      "target": "nsis"
     },
     "mac": {
       "target": "dmg",
@@ -33,6 +34,15 @@
     },
     "linux": {
       "target": "AppImage"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "dist/server_dist",
+        "to": "server_dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }

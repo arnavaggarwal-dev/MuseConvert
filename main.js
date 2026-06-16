@@ -21,10 +21,21 @@ async function startBackend() {
     console.log(`[main] port ${PORT} already in use — reusing existing server`);
     return;
   }
-  const py = process.platform === 'win32' ? 'python' : 'python3';
-  server = spawn(py, ['-m', 'uvicorn', 'server:app', `--port=${PORT}`, '--log-level=warning'], {
-    cwd: __dirname,
+  let spawnCmd, spawnArgs, spawnCwd;
+  if (app.isPackaged) {
+    // Use the bundled server_launch.exe produced by PyInstaller
+    spawnCmd = path.join(process.resourcesPath, 'server_dist', 'server_launch.exe');
+    spawnArgs = [];
+    spawnCwd  = path.join(process.resourcesPath, 'server_dist');
+  } else {
+    spawnCmd  = process.platform === 'win32' ? 'python' : 'python3';
+    spawnArgs = ['-m', 'uvicorn', 'server:app', `--port=${PORT}`, '--log-level=warning'];
+    spawnCwd  = __dirname;
+  }
+  server = spawn(spawnCmd, spawnArgs, {
+    cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
   server.stdout.on('data', d => process.stdout.write('[server] ' + d));
   server.stderr.on('data', d => process.stderr.write('[server] ' + d));
@@ -38,12 +49,18 @@ async function startBackend() {
 
 function killBackend() {
   if (!server) return;
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/pid', server.pid, '/f', '/t']);
-  } else {
-    server.kill('SIGTERM');
-  }
+  const pid = server.pid;
+  // Destroy open pipes so Node stops tracking this child (prevents exit hang)
+  try { server.stdout.destroy(); } catch (_) {}
+  try { server.stderr.destroy(); } catch (_) {}
+  server.unref();
   server = null;
+  if (process.platform === 'win32') {
+    const tk = spawn('taskkill', ['/pid', pid, '/f', '/t'], { windowsHide: true });
+    tk.unref();
+  } else {
+    try { process.kill(pid, 'SIGTERM'); } catch (_) {}
+  }
 }
 
 // Poll until the server responds (max 60 s)
@@ -76,7 +93,7 @@ async function createWindow() {
     backgroundColor: '#0a0a0c',
     webPreferences: { nodeIntegration: false },
   });
-  splash.loadURL(`data:text/html,<body style="margin:0;background:#0a0a0c;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#fff"><div style="text-align:center"><div style="font-size:22px;font-weight:700;letter-spacing:.05em">AEGISSCORE</div><div style="font-size:12px;color:#555;margin-top:8px">Starting local engine…</div></div></body>`);
+  splash.loadFile(path.join(__dirname, 'assets', 'splash.html'));
 
   try {
     await waitForServer();
@@ -98,6 +115,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
@@ -161,7 +179,7 @@ app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   killBackend();
-  app.quit();
+  app.exit(0);
 });
 
 app.on('before-quit', killBackend);
