@@ -125,6 +125,11 @@ function drawNote(g, x, n, clef, color, beats){
   const nhW = 5.4, nhH = 3.9;
   // ledger lines
   drawLedgers(g, x, n.dia, clef);
+  // accidental (sharp ♯ / flat ♭ / natural ♮) — drawn before notehead
+  if (n.acc) {
+    const accGlyph = n.acc === 'sharp' ? SMUFL.sharp : n.acc === 'flat' ? SMUFL.flat : SMUFL.natural;
+    el("text",{x:x-10,y:y+3.5,class:"smufl",fill:"var(--t-0)","font-size":17,"opacity":"0.9"},g).textContent = accGlyph;
+  }
   if (n.v === 1){ // whole note
     el("ellipse",{cx:x,cy:y,rx:nhW,ry:nhH,fill:"none",stroke:color,"stroke-width":1.7,transform:`rotate(-12 ${x} ${y})`},g);
   } else {
@@ -183,8 +188,45 @@ function drawFlagOrBeam(g, group, color){
 }
 
 // ---- MIDI → notation helpers ----
-const _CHROM_DIA = [0,0,1,1,2,3,3,4,4,5,5,6]; // chromatic step → diatonic (C=0..B=6)
-function midiToDia(pitch){ return Math.floor(pitch/12)*7 + _CHROM_DIA[pitch%12]; }
+
+// [diaStep(0-6), alteration(-1/0/1)] for each pitch class — two spellings
+const _SPELL_SHARP = [[0,0],[0,1],[1,0],[1,1],[2,0],[3,0],[3,1],[4,0],[4,1],[5,0],[5,1],[6,0]];
+const _SPELL_FLAT  = [[0,0],[1,-1],[1,0],[2,-1],[2,0],[3,0],[4,-1],[4,0],[5,-1],[5,0],[6,-1],[6,0]];
+const _STEPS = 'CDEFGAB';
+
+// Returns {dia, acc: 'sharp'|'flat'|'natural'|null}
+// Chooses enharmonic spelling (C#/Db etc.) based on key signature, then compares
+// the note's actual alteration to what the key sig implies for that diatonic step.
+function _midiNoteInfo(pitch, ks) {
+  const pc  = ((pitch % 12) + 12) % 12;
+  const oct = Math.floor(pitch / 12) - 1;
+  const ksSharps = (ks && ks.sharps) || [];
+  const ksFlats  = (ks && ks.flats)  || [];
+  const isAltered = !!_SPELL_SHARP[pc][1]; // true for C#/Db, D#/Eb, F#/Gb, G#/Ab, A#/Bb
+
+  let diaStep, noteAcc;
+  if (!isAltered) {
+    diaStep = _SPELL_SHARP[pc][0]; noteAcc = 0;
+  } else {
+    const sharpBase = _STEPS[_SPELL_SHARP[pc][0]]; // e.g. 'C' for C#
+    const flatBase  = _STEPS[_SPELL_FLAT[pc][0]];  // e.g. 'D' for Db
+    if      (ksSharps.includes(sharpBase)) { diaStep=_SPELL_SHARP[pc][0]; noteAcc=1;  }
+    else if (ksFlats.includes(flatBase))   { diaStep=_SPELL_FLAT[pc][0];  noteAcc=-1; }
+    else if (ksFlats.length > 0)           { diaStep=_SPELL_FLAT[pc][0];  noteAcc=-1; }
+    else                                   { diaStep=_SPELL_SHARP[pc][0]; noteAcc=1;  }
+  }
+
+  const stepName  = _STEPS[diaStep];
+  const keySigAcc = ksSharps.includes(stepName) ? 1 : ksFlats.includes(stepName) ? -1 : 0;
+  const displayAcc = noteAcc === keySigAcc ? null
+    : noteAcc === 0 ? 'natural' : noteAcc === 1 ? 'sharp' : 'flat';
+
+  return { dia: oct * 7 + diaStep, acc: displayAcc };
+}
+
+// Keep for any legacy callers
+function midiToDia(pitch){ return _midiNoteInfo(pitch, null).dia; }
+
 function _qz(b, grid=0.25){ return Math.round(b/grid)*grid; }
 function _beatDurToV(db){
   if(db>=3.5) return {v:1,dot:false};
@@ -197,43 +239,65 @@ function _beatDurToV(db){
   return {v:16,dot:false};
 }
 
-function buildMeasuresFromMidi(midiNotes, beats, bars, tempo){
+function buildMeasuresFromMidi(midiNotes, beats, bars, tempo, barOffset, keySig){
   const bps = tempo / 60;
-  const SLOTS = beats * 4;
+  const off = (barOffset || 0) * beats;
+  // 8th-note grid: notes 0.5 beats apart minimum → ~17px spacing, no visual collision
+  const GRID = 0.5;
+  const SLOTS = beats * 2;
+  const MIN_REST = 1.0; // suppress rests shorter than a quarter note
+
   const events = midiNotes
     .filter(n => !n.drum)
-    .map(n => ({
-      beatStart: _qz(n.start * bps),
-      beatDur:   Math.max(0.25, _qz((n.end - n.start) * bps)),
-      dia:       midiToDia(n.pitch)
-    }))
-    .filter(n => n.beatStart < bars * beats);
+    .map(n => {
+      const info = _midiNoteInfo(n.pitch, keySig);
+      return {
+        beatStart: _qz(n.start * bps, GRID) - off,
+        beatDur:   Math.max(GRID, _qz((n.end - n.start) * bps, GRID)),
+        dia:       info.dia,
+        acc:       info.acc,
+      };
+    })
+    .filter(n => n.beatStart >= 0 && n.beatStart < bars * beats);
 
   const grid = Array.from({length:bars}, ()=>Array(SLOTS).fill(null));
   events.forEach(n => {
     const bar = Math.floor(n.beatStart / beats);
     if(bar < 0 || bar >= bars) return;
-    const slot = Math.round((n.beatStart - bar*beats) * 4);
+    const slot = Math.round((n.beatStart - bar*beats) / GRID);
     if(slot < 0 || slot >= SLOTS) return;
+    // keep highest pitch per slot (most audible note wins)
     if(!grid[bar][slot] || n.dia > grid[bar][slot].dia)
-      grid[bar][slot] = { dia:n.dia, beatInBar:n.beatStart-bar*beats, beatDur:n.beatDur };
+      grid[bar][slot] = { dia:n.dia, acc:n.acc, beatDur:n.beatDur };
   });
 
   return grid.map(row => {
     const notes = [];
     let pos = 0;
+    const barAccShown = new Set();
     for(let s=0; s<SLOTS; s++){
-      const bp = s/4;
-      if(pos > bp+0.001) continue;
+      const bp = s * GRID;
+      if(pos > bp + 0.001) continue;
       const evt = row[s];
       if(evt){
-        if(bp > pos+0.001){ const rv=_beatDurToV(bp-pos); notes.push({dia:34,v:rv.v,dot:rv.dot,beats:bp-pos,rest:true,onset:pos}); }
-        const nv=_beatDurToV(evt.beatDur); const ad=Math.min(evt.beatDur,beats-bp);
-        notes.push({dia:evt.dia,v:nv.v,dot:nv.dot,beats:ad,rest:false,onset:bp});
-        pos=bp+ad;
+        // only insert rest if the gap is big enough to show without overlap
+        if(bp > pos + 0.001){
+          const gap = bp - pos;
+          if(gap >= MIN_REST){ const rv=_beatDurToV(gap); notes.push({dia:34,v:rv.v,dot:rv.dot,beats:gap,rest:true,onset:pos}); }
+        }
+        const nv=_beatDurToV(evt.beatDur); const ad=Math.min(evt.beatDur, beats-bp);
+        const accKey = evt.dia % 7;
+        const showAcc = evt.acc && !barAccShown.has(accKey) ? evt.acc : null;
+        if (evt.acc) barAccShown.add(accKey);
+        notes.push({dia:evt.dia, acc:showAcc, v:nv.v, dot:nv.dot, beats:ad, rest:false, onset:bp});
+        pos = bp + ad;
       }
     }
-    if(pos < beats-0.001){ const rv=_beatDurToV(beats-pos); notes.push({dia:34,v:rv.v,dot:rv.dot,beats:beats-pos,rest:true,onset:pos}); }
+    // trailing rest: only if remainder >= 1 beat
+    if(pos < beats - 0.001){
+      const gap = beats - pos;
+      if(gap >= MIN_REST){ const rv=_beatDurToV(gap); notes.push({dia:34,v:rv.v,dot:rv.dot,beats:gap,rest:true,onset:pos}); }
+    }
     return notes.length ? notes : [{dia:34,v:1,dot:false,beats:beats,rest:true,onset:0}];
   });
 }
@@ -244,10 +308,18 @@ function renderStaff(stem, project, opts){
   const bars = project.bars;
   const clef = stem.clef === "perc" ? "treble" : stem.clef;
   const mW = beats === 3 ? 132 : 168;
-  const firstPad = 78;     // clef + key + time
   const notePadL = 16, notePadR = 14;
+
+  // pre-compute header width so firstPad is always wide enough
+  // clef ends ~x42; key sig: 8.5px/sharp, 8px/flat; time sig: 24px + gap
+  const ks = KEYSIG[project.key] || {sharps:[],flats:[]};
+  const kEndX = 44 + ks.sharps.length * 8.5 + ks.flats.length * 8;
+  const tsX   = Math.max(kEndX + 6, 60);
+  const firstPad = Math.max(78, Math.ceil(tsX + 28)); // 28 = time sig glyph width + gap
+
   const totalW = firstPad + mW*bars + 8;
-  const height = 96;
+  // bass clef needs extra vertical room (E1 open string lands at y≈107)
+  const height = clef === 'bass' ? 148 : 96;
   const svg = el("svg",{ width: totalW, height, viewBox:`0 0 ${totalW} ${height}`, class:"staff-svg" });
   const css = getComputedStyle(document.documentElement);
   const color = css.getPropertyValue(stem.color).trim() || "#9ab";
@@ -262,12 +334,8 @@ function renderStaff(stem, project, opts){
   el("text",{x:10,y:clefGy,class:"smufl",fill:"var(--t-1)","font-size":34},svg).textContent = clefGlyph;
 
   // key signature (sharps/flats)
-  const ks = KEYSIG[project.key] || {sharps:[],flats:[]};
   let kx = 44;
-  const sharpRowDia = { F: stem.clef==="bass"?dabs("F",3):dabs("F",5), C: stem.clef==="bass"?dabs("C",3):dabs("C",5),
-                        G: stem.clef==="bass"?dabs("G",3):dabs("G",5) };
   const accDia = (name)=>{
-    // place near top of staff in correct octave for clef
     const base = clef==="bass"? {F:dabs("F",3),C:dabs("C",3),G:dabs("G",3),A:dabs("A",2),E:dabs("E",3),B:dabs("B",2),D:dabs("D",3)}
                : clef==="alto"? {F:dabs("F",4),C:dabs("C",4),G:dabs("G",4),A:dabs("A",3),E:dabs("E",4),B:dabs("B",3),D:dabs("D",4)}
                :               {F:dabs("F",5),C:dabs("C",5),G:dabs("G",5),A:dabs("A",4),E:dabs("E",5),B:dabs("B",4),D:dabs("D",5)};
@@ -278,10 +346,9 @@ function renderStaff(stem, project, opts){
     ks.flats.forEach(s=>{ const y=yForDia(accDia(s),clef); el("text",{x:kx,y:y+3.2,class:"smufl",fill:"var(--t-1)","font-size":22},svg).textContent=SMUFL.flat; kx+=8; });
   }
 
-  // time signature
-  const tsx = Math.max(kx+6, 60);
-  el("text",{x:tsx,y:STAFF_TOP+SP*1.05+1,class:"smufl ts",fill:"var(--t-0)","font-size":24,"text-anchor":"middle"},svg).textContent = tsNum(project.timeSig[0]);
-  el("text",{x:tsx,y:STAFF_TOP+SP*3.05+1,class:"smufl ts",fill:"var(--t-0)","font-size":24,"text-anchor":"middle"},svg).textContent = tsNum(project.timeSig[1]);
+  // time signature (use pre-computed tsX so it always lands before firstPad)
+  el("text",{x:tsX,y:STAFF_TOP+SP*1.05+1,class:"smufl ts",fill:"var(--t-0)","font-size":24,"text-anchor":"middle"},svg).textContent = tsNum(project.timeSig[0]);
+  el("text",{x:tsX,y:STAFF_TOP+SP*3.05+1,class:"smufl ts",fill:"var(--t-0)","font-size":24,"text-anchor":"middle"},svg).textContent = tsNum(project.timeSig[1]);
 
   // barlines
   for (let b=0;b<=bars;b++){ const x=firstPad+b*mW; el("line",{x1:x,y1:STAFF_TOP,x2:x,y2:STAFF_TOP+4*SP,stroke:b===bars?"var(--line-strong)":"var(--line)","stroke-width":b===bars?2:1},svg); }
@@ -294,7 +361,7 @@ function renderStaff(stem, project, opts){
   }
 
   const measures = (stem.midiNotes && stem.midiNotes.length > 0)
-    ? buildMeasuresFromMidi(stem.midiNotes, beats, bars, project.tempo || 120)
+    ? buildMeasuresFromMidi(stem.midiNotes, beats, bars, project.tempo || 120, project.barOffset || 0, ks)
     : genNotes(stem, beats, bars, rnd);
   const noteG = el("g",{},svg);
 

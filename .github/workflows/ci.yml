@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "desktop/**", "feature/**"]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies (no heavy ML)
+        run: |
+          pip install fastapi pydantic httpx pytest pytest-asyncio sqlalchemy aiofiles
+
+      - name: Lint (ruff)
+        run: |
+          pip install ruff
+          ruff check backend/ tests/ --ignore E501
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v
+
+      - name: Run integration tests (mock pipeline)
+        run: pytest tests/integration/ -v
+
+  build-windows:
+    runs-on: windows-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install build deps
+        run: pip install pyinstaller PySide6
+
+      - name: Build executable
+        run: python scripts/build_windows.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AegisScoreStudio-Windows
+          path: dist/AegisScoreStudio.exe
